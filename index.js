@@ -1,15 +1,15 @@
-const readline = require('readline');
+const express = require('express');
 
-// Configuração para entrada e saída no terminal
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
+const app = express();
+const PORT = 3000;
 
-// Array que vai funcionar como o nosso banco de dados em memória
+// Middleware para receber JSON
+app.use(express.json());
+
+// Banco de dados em memória
 const listaDeContatos = [];
 
-// --- FUNÇÕES DE VALIDAÇÃO ---
+// ---------------- VALIDACOES ----------------
 
 function validarNome(nome) {
     if (!nome || nome.trim().length < 3) {
@@ -19,97 +19,148 @@ function validarNome(nome) {
 }
 
 function validarTelefone(telefone) {
-    // Aceita números limpos ou formatados (Ex: 42999998888 ou (42) 99999-8888)
     const formatoTelefone = /^\(?\d{2}\)?\s?\d{4,5}-?\d{4}$/;
+
     if (!formatoTelefone.test(telefone.trim())) {
-        return "Telefone inválido. Digite com o DDD (ex: 42999998888).";
+        return "Telefone inválido. Digite com o DDD.";
     }
+
     return null;
 }
 
 function validarEmail(email) {
-    // Validação padrão de estrutura de e-mail (texto + @ + texto + .com)
     const formatoEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (!formatoEmail.test(email.trim())) {
-        return "E-mail inválido. Digite um formato correto (ex: nome@email.com).";
+        return "E-mail inválido.";
     }
+
     return null;
 }
 
-// --- FLUXO PRINCIPAL DO SISTEMA ---
+// ---------------- ROTAS ----------------
 
-function mostrarMenu() {
-    console.log("\n--- SISTEMA DE CONTATOS ---");
-    console.log("1 - Cadastrar Novo Contato");
-    console.log("2 - Listar Todos os Contatos");
-    console.log("3 - Sair do Programa");
-    console.log("---------------------------");
-
-    rl.question("Escolha uma opcao: ", (opcao) => {
-        if (opcao.trim() === '1') {
-            cadastrarContato();
-        } else if (opcao.trim() === '2') {
-            mostrarContatos();
-        } else if (opcao.trim() === '3') {
-            console.log("\nEncerrando o sistema...");
-            rl.close();
-        } else {
-            console.log("\nOpcao incorreta! Escolha 1, 2 ou 3.");
-            mostrarMenu();
-        }
+// GET -> listar contatos
+app.get('/contatos', (req, res) => {
+    res.status(200).json({
+        total: listaDeContatos.length,
+        contatos: listaDeContatos
     });
-}
+});
 
-function cadastrarContato() {
-    console.log("\n[ NOVO CADASTRO ]");
+// POST -> cadastrar contato
+app.post('/contatos', (req, res) => {
+    const { nome, telefone, email } = req.body;
 
-    rl.question("Digite o nome: ", (nome) => {
-        const erroNome = validarNome(nome);
-        if (erroNome) {
-            console.log("Erro:", erroNome);
-            return mostrarMenu(); // Retorna ao menu caso dê erro
-        }
-
-        rl.question("Digite o telefone: ", (telefone) => {
-            const erroTelefone = validarTelefone(telefone);
-            if (erroTelefone) {
-                console.log("Erro:", erroTelefone);
-                return mostrarMenu();
-            }
-
-            rl.question("Digite o e-mail: ", (email) => {
-                const erroEmail = validarEmail(email);
-                if (erroEmail) {
-                    console.log("Erro:", erroEmail);
-                    return mostrarMenu();
-                }
-
-                // Insere o objeto com os dados validados dentro do array
-                listaDeContatos.push({
-                    nome: nome.trim(),
-                    telefone: telefone.trim(),
-                    email: email.trim().toLowerCase()
-                });
-
-                console.log("\nContato salvo com sucesso!");
-                mostrarMenu();
-            });
-        });
-    });
-}
-
-function mostrarContatos() {
-    console.log("\n[ LISTA DE CONTATOS CADASTRADOS ]");
-    
-    if (listaDeContatos.length === 0) {
-        console.log("Nenhum contato foi salvo ainda.");
-    } else {
-        listaDeContatos.forEach((contato, i) => {
-            console.log(`${i + 1}. Nome: ${contato.nome} | Tel: ${contato.telefone} | E-mail: ${contato.email}`);
+    // Validacoes
+    const erroNome = validarNome(nome);
+    if (erroNome) {
+        return res.status(400).json({
+            erro: erroNome
         });
     }
-    mostrarMenu();
-}
 
-// Inicialização do script
-mostrarMenu();
+    const erroTelefone = validarTelefone(telefone);
+    if (erroTelefone) {
+        return res.status(400).json({
+            erro: erroTelefone
+        });
+    }
+
+    const erroEmail = validarEmail(email);
+    if (erroEmail) {
+        return res.status(400).json({
+            erro: erroEmail
+        });
+    }
+
+    // Criacao do contato
+    const novoContato = {
+        id: listaDeContatos.length + 1,
+        nome: nome.trim(),
+        telefone: telefone.trim(),
+        email: email.trim().toLowerCase()
+    };
+
+    listaDeContatos.push(novoContato);
+
+    res.status(201).json({
+        mensagem: "Contato cadastrado com sucesso!",
+        contato: novoContato
+    });
+});
+
+// DELETE -> remover contato
+app.delete('/contatos/:id', (req, res) => {
+    const id = Number(req.params.id);
+
+    const index = listaDeContatos.findIndex(
+        contato => contato.id === id
+    );
+
+    if (index === -1) {
+        return res.status(404).json({
+            erro: "Contato não encontrado."
+        });
+    }
+
+    const contatoRemovido = listaDeContatos.splice(index, 1);
+
+    res.status(200).json({
+        mensagem: "Contato removido com sucesso!",
+        contato: contatoRemovido[0]
+    });
+});
+
+// PUT -> atualizar contato
+app.put('/contatos/:id', (req, res) => {
+    const id = Number(req.params.id);
+
+    const contato = listaDeContatos.find(
+        contato => contato.id === id
+    );
+
+    if (!contato) {
+        return res.status(404).json({
+            erro: "Contato não encontrado."
+        });
+    }
+
+    const { nome, telefone, email } = req.body;
+
+    // Validacoes
+    const erroNome = validarNome(nome);
+    if (erroNome) {
+        return res.status(400).json({
+            erro: erroNome
+        });
+    }
+
+    const erroTelefone = validarTelefone(telefone);
+    if (erroTelefone) {
+        return res.status(400).json({
+            erro: erroTelefone
+        });
+    }
+
+    const erroEmail = validarEmail(email);
+    if (erroEmail) {
+        return res.status(400).json({
+            erro: erroEmail
+        });
+    }
+
+    contato.nome = nome.trim();
+    contato.telefone = telefone.trim();
+    contato.email = email.trim().toLowerCase();
+
+    res.status(200).json({
+        mensagem: "Contato atualizado com sucesso!",
+        contato
+    });
+});
+
+// Inicializacao do servidor
+app.listen(PORT, () => {
+    console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
